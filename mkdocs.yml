@@ -19,6 +19,8 @@ theme:
         name: 'Switch to light mode'
   icon:
     repo: fontawesome/brands/github
+  features:
+    - content.code.copy
 
 repo_name: encode/starlette
 repo_url: https://github.com/encode/starlette
@@ -39,7 +41,7 @@ nav:
   - GraphQL: 'graphql.md'
   - Authentication: 'authentication.md'
   - API Schemas: 'schemas.md'
-  - Events: 'events.md'
+  - Lifespan: 'lifespan.md'
   - Background Tasks: 'background.md'
   - Server Push: 'server-push.md'
   - Exceptions: 'exceptions.md'
@@ -55,8 +57,4 @@ markdown_extensions:
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.tabbed:
-      alternate_style: true 
-
-extra_javascript:
-  - 'js/chat.js'
-  - 'js/sidecar-1.5.0.js'
+      alternate_style: true

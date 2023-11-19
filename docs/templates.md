@@ -1,6 +1,14 @@
 Starlette is not _strictly_ coupled to any particular templating engine, but
 Jinja2 provides an excellent choice.
 
+### Jinja2Templates
+
+Signature: `Jinja2Templates(directory, context_processors=None, **env_options)`
+
+* `directory` - A string, [os.Pathlike][pathlike] or a list of strings or [os.Pathlike][pathlike] denoting a directory path.
+* `context_processors` - A list of functions that return a dictionary to add to the template context.
+* `**env_options` - Additional keyword arguments to pass to the Jinja2 environment.
+
 Starlette provides a simple way to get `jinja2` configured. This is probably
 what you want to use by default.
 
@@ -14,7 +22,7 @@ from starlette.staticfiles import StaticFiles
 templates = Jinja2Templates(directory='templates')
 
 async def homepage(request):
-    return templates.TemplateResponse('index.html', {'request': request})
+    return templates.TemplateResponse(request, 'index.html')
 
 routes = [
     Route('/', endpoint=homepage),
@@ -49,6 +57,21 @@ def marked_filter(text):
 templates = Jinja2Templates(directory='templates')
 templates.env.filters['marked'] = marked_filter
 ```
+
+
+## Using custom jinja2.Environment instance
+
+Starlette also accepts a preconfigured [`jinja2.Environment`](https://jinja.palletsprojects.com/en/3.0.x/api/#api) instance. 
+
+
+```python
+import jinja2
+from starlette.templating import Jinja2Templates
+
+env = jinja2.Environment(...)
+templates = Jinja2Templates(env=env)
+```
+
 
 ## Context processors
 
@@ -128,3 +151,4 @@ for example, strictly evaluate any database queries within the view and
 include the final results in the context.
 
 [jinja2]: https://jinja.palletsprojects.com/en/3.0.x/api/?highlight=environment#writing-filters
+[pathlike]: https://docs.python.org/3/library/os.html#os.PathLike

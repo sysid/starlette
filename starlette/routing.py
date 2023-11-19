@@ -9,6 +9,7 @@ import warnings
 from contextlib import asynccontextmanager
 from enum import Enum
 
+from starlette._exception_handler import wrap_app_handling_exceptions
 from starlette._utils import is_async_callable
 from starlette.concurrency import run_in_threadpool
 from starlette.convertors import CONVERTOR_TYPES, Convertor
@@ -16,8 +17,8 @@ from starlette.datastructures import URL, Headers, URLPath
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.types import ASGIApp, Lifespan, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketClose
 
 
@@ -53,25 +54,32 @@ def iscoroutinefunction_or_partial(obj: typing.Any) -> bool:  # pragma: no cover
     return inspect.iscoroutinefunction(obj)
 
 
-def request_response(func: typing.Callable) -> ASGIApp:
+def request_response(
+    func: typing.Callable[[Request], typing.Union[typing.Awaitable[Response], Response]]
+) -> ASGIApp:
     """
     Takes a function or coroutine `func(request) -> response`,
     and returns an ASGI application.
     """
-    is_coroutine = is_async_callable(func)
 
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
-        request = Request(scope, receive=receive, send=send)
-        if is_coroutine:
-            response = await func(request)
-        else:
-            response = await run_in_threadpool(func, request)
-        await response(scope, receive, send)
+        request = Request(scope, receive, send)
+
+        async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            if is_async_callable(func):
+                response = await func(request)
+            else:
+                response = await run_in_threadpool(func, request)
+            await response(scope, receive, send)
+
+        await wrap_app_handling_exceptions(app, request)(scope, receive, send)
 
     return app
 
 
-def websocket_session(func: typing.Callable) -> ASGIApp:
+def websocket_session(
+    func: typing.Callable[[WebSocket], typing.Awaitable[None]]
+) -> ASGIApp:
     """
     Takes a coroutine `func(session)`, and returns an ASGI application.
     """
@@ -79,12 +87,16 @@ def websocket_session(func: typing.Callable) -> ASGIApp:
 
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
         session = WebSocket(scope, receive=receive, send=send)
-        await func(session)
+
+        async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            await func(session)
+
+        await wrap_app_handling_exceptions(app, session)(scope, receive, send)
 
     return app
 
 
-def get_name(endpoint: typing.Callable) -> str:
+def get_name(endpoint: typing.Callable[..., typing.Any]) -> str:
     if inspect.isroutine(endpoint) or inspect.isclass(endpoint):
         return endpoint.__name__
     return endpoint.__class__.__name__
@@ -92,9 +104,9 @@ def get_name(endpoint: typing.Callable) -> str:
 
 def replace_params(
     path: str,
-    param_convertors: typing.Dict[str, Convertor],
+    param_convertors: typing.Dict[str, Convertor[typing.Any]],
     path_params: typing.Dict[str, str],
-) -> typing.Tuple[str, dict]:
+) -> typing.Tuple[str, typing.Dict[str, str]]:
     for key, value in list(path_params.items()):
         if "{" + key + "}" in path:
             convertor = param_convertors[key]
@@ -110,7 +122,7 @@ PARAM_REGEX = re.compile("{([a-zA-Z_][a-zA-Z0-9_]*)(:[a-zA-Z_][a-zA-Z0-9_]*)?}")
 
 def compile_path(
     path: str,
-) -> typing.Tuple[typing.Pattern, str, typing.Dict[str, Convertor]]:
+) -> typing.Tuple[typing.Pattern[str], str, typing.Dict[str, Convertor[typing.Any]]]:
     """
     Given a path string, like: "/{username:str}",
     or a host string, like: "{subdomain}.mydomain.org", return a three-tuple
@@ -170,7 +182,7 @@ class BaseRoute:
     def matches(self, scope: Scope) -> typing.Tuple[Match, Scope]:
         raise NotImplementedError()  # pragma: no cover
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         raise NotImplementedError()  # pragma: no cover
 
     async def handle(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -200,7 +212,7 @@ class Route(BaseRoute):
     def __init__(
         self,
         path: str,
-        endpoint: typing.Callable,
+        endpoint: typing.Callable[..., typing.Any],
         *,
         methods: typing.Optional[typing.List[str]] = None,
         name: typing.Optional[str] = None,
@@ -249,7 +261,7 @@ class Route(BaseRoute):
                     return Match.FULL, child_scope
         return Match.NONE, {}
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         seen_params = set(path_params.keys())
         expected_params = set(self.param_convertors.keys())
 
@@ -292,7 +304,11 @@ class Route(BaseRoute):
 
 class WebSocketRoute(BaseRoute):
     def __init__(
-        self, path: str, endpoint: typing.Callable, *, name: typing.Optional[str] = None
+        self,
+        path: str,
+        endpoint: typing.Callable[..., typing.Any],
+        *,
+        name: typing.Optional[str] = None,
     ) -> None:
         assert path.startswith("/"), "Routed paths must start with '/'"
         self.path = path
@@ -324,7 +340,7 @@ class WebSocketRoute(BaseRoute):
                 return Match.FULL, child_scope
         return Match.NONE, {}
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         seen_params = set(path_params.keys())
         expected_params = set(self.param_convertors.keys())
 
@@ -406,7 +422,7 @@ class Mount(BaseRoute):
                 return Match.FULL, child_scope
         return Match.NONE, {}
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         if self.name is not None and name == self.name and "path" in path_params:
             # 'name' matches "<mount_name>".
             path_params["path"] = path_params["path"].lstrip("/")
@@ -484,7 +500,7 @@ class Host(BaseRoute):
                 return Match.FULL, child_scope
         return Match.NONE, {}
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         if self.name is not None and name == self.name and "path" in path_params:
             # 'name' matches "<mount_name>".
             path = path_params.pop("path")
@@ -547,12 +563,14 @@ class _AsyncLiftContextManager(typing.AsyncContextManager[_T]):
 
 
 def _wrap_gen_lifespan_context(
-    lifespan_context: typing.Callable[[typing.Any], typing.Generator]
-) -> typing.Callable[[typing.Any], typing.AsyncContextManager]:
+    lifespan_context: typing.Callable[
+        [typing.Any], typing.Generator[typing.Any, typing.Any, typing.Any]
+    ],
+) -> typing.Callable[[typing.Any], typing.AsyncContextManager[typing.Any]]:
     cmgr = contextlib.contextmanager(lifespan_context)
 
     @functools.wraps(cmgr)
-    def wrapper(app: typing.Any) -> _AsyncLiftContextManager:
+    def wrapper(app: typing.Any) -> _AsyncLiftContextManager[typing.Any]:
         return _AsyncLiftContextManager(cmgr(app))
 
     return wrapper
@@ -578,11 +596,15 @@ class Router:
         routes: typing.Optional[typing.Sequence[BaseRoute]] = None,
         redirect_slashes: bool = True,
         default: typing.Optional[ASGIApp] = None,
-        on_startup: typing.Optional[typing.Sequence[typing.Callable]] = None,
-        on_shutdown: typing.Optional[typing.Sequence[typing.Callable]] = None,
-        lifespan: typing.Optional[
-            typing.Callable[[typing.Any], typing.AsyncContextManager]
+        on_startup: typing.Optional[
+            typing.Sequence[typing.Callable[[], typing.Any]]
         ] = None,
+        on_shutdown: typing.Optional[
+            typing.Sequence[typing.Callable[[], typing.Any]]
+        ] = None,
+        # the generic to Lifespan[AppType] is the type of the top level application
+        # which the router cannot know statically, so we use typing.Any
+        lifespan: typing.Optional[Lifespan[typing.Any]] = None,
     ) -> None:
         self.routes = [] if routes is None else list(routes)
         self.redirect_slashes = redirect_slashes
@@ -590,10 +612,22 @@ class Router:
         self.on_startup = [] if on_startup is None else list(on_startup)
         self.on_shutdown = [] if on_shutdown is None else list(on_shutdown)
 
+        if on_startup or on_shutdown:
+            warnings.warn(
+                "The on_startup and on_shutdown parameters are deprecated, and they "
+                "will be removed on version 1.0. Use the lifespan parameter instead. "
+                "See more about it on https://www.starlette.io/lifespan/.",
+                DeprecationWarning,
+            )
+            if lifespan:
+                warnings.warn(
+                    "The `lifespan` parameter cannot be used with `on_startup` or "
+                    "`on_shutdown`. Both `on_startup` and `on_shutdown` will be "
+                    "ignored."
+                )
+
         if lifespan is None:
-            self.lifespan_context: typing.Callable[
-                [typing.Any], typing.AsyncContextManager
-            ] = _DefaultLifespan(self)
+            self.lifespan_context: Lifespan[typing.Any] = _DefaultLifespan(self)
 
         elif inspect.isasyncgenfunction(lifespan):
             warnings.warn(
@@ -602,7 +636,7 @@ class Router:
                 DeprecationWarning,
             )
             self.lifespan_context = asynccontextmanager(
-                lifespan,  # type: ignore[arg-type]
+                lifespan,
             )
         elif inspect.isgeneratorfunction(lifespan):
             warnings.warn(
@@ -611,7 +645,7 @@ class Router:
                 DeprecationWarning,
             )
             self.lifespan_context = _wrap_gen_lifespan_context(
-                lifespan,  # type: ignore[arg-type]
+                lifespan,
             )
         else:
             self.lifespan_context = lifespan
@@ -631,7 +665,7 @@ class Router:
             response = PlainTextResponse("Not Found", status_code=404)
         await response(scope, receive, send)
 
-    def url_path_for(self, name: str, **path_params: typing.Any) -> URLPath:
+    def url_path_for(self, name: str, /, **path_params: typing.Any) -> URLPath:
         for route in self.routes:
             try:
                 return route.url_path_for(name, **path_params)
@@ -665,10 +699,16 @@ class Router:
         startup and shutdown events.
         """
         started = False
-        app = scope.get("app")
+        app: typing.Any = scope.get("app")
         await receive()
         try:
-            async with self.lifespan_context(app):
+            async with self.lifespan_context(app) as maybe_state:
+                if maybe_state is not None:
+                    if "state" not in scope:
+                        raise RuntimeError(
+                            'The server does not support "state" in the lifespan scope.'
+                        )
+                    scope["state"].update(maybe_state)
                 await send({"type": "lifespan.startup.complete"})
                 started = True
                 await receive()
@@ -752,7 +792,9 @@ class Router:
     def add_route(
         self,
         path: str,
-        endpoint: typing.Callable,
+        endpoint: typing.Callable[
+            [Request], typing.Union[typing.Awaitable[Response], Response]
+        ],
         methods: typing.Optional[typing.List[str]] = None,
         name: typing.Optional[str] = None,
         include_in_schema: bool = True,
@@ -767,7 +809,10 @@ class Router:
         self.routes.append(route)
 
     def add_websocket_route(
-        self, path: str, endpoint: typing.Callable, name: typing.Optional[str] = None
+        self,
+        path: str,
+        endpoint: typing.Callable[[WebSocket], typing.Awaitable[None]],
+        name: typing.Optional[str] = None,
     ) -> None:  # pragma: no cover
         route = WebSocketRoute(path, endpoint=endpoint, name=name)
         self.routes.append(route)
@@ -778,7 +823,7 @@ class Router:
         methods: typing.Optional[typing.List[str]] = None,
         name: typing.Optional[str] = None,
         include_in_schema: bool = True,
-    ) -> typing.Callable:
+    ) -> typing.Callable:  # type: ignore[type-arg]
         """
         We no longer document this decorator style API, and its usage is discouraged.
         Instead you should use the following approach:
@@ -792,7 +837,7 @@ class Router:
             DeprecationWarning,
         )
 
-        def decorator(func: typing.Callable) -> typing.Callable:
+        def decorator(func: typing.Callable) -> typing.Callable:  # type: ignore[type-arg]  # noqa: E501
             self.add_route(
                 path,
                 func,
@@ -806,7 +851,7 @@ class Router:
 
     def websocket_route(
         self, path: str, name: typing.Optional[str] = None
-    ) -> typing.Callable:
+    ) -> typing.Callable:  # type: ignore[type-arg]
         """
         We no longer document this decorator style API, and its usage is discouraged.
         Instead you should use the following approach:
@@ -820,14 +865,14 @@ class Router:
             DeprecationWarning,
         )
 
-        def decorator(func: typing.Callable) -> typing.Callable:
+        def decorator(func: typing.Callable) -> typing.Callable:  # type: ignore[type-arg]  # noqa: E501
             self.add_websocket_route(path, func, name=name)
             return func
 
         return decorator
 
     def add_event_handler(
-        self, event_type: str, func: typing.Callable
+        self, event_type: str, func: typing.Callable[[], typing.Any]
     ) -> None:  # pragma: no cover
         assert event_type in ("startup", "shutdown")
 
@@ -836,14 +881,14 @@ class Router:
         else:
             self.on_shutdown.append(func)
 
-    def on_event(self, event_type: str) -> typing.Callable:
+    def on_event(self, event_type: str) -> typing.Callable:  # type: ignore[type-arg]
         warnings.warn(
             "The `on_event` decorator is deprecated, and will be removed in version 1.0.0. "  # noqa: E501
-            "Refer to https://www.starlette.io/events/#registering-events for recommended approach.",  # noqa: E501
+            "Refer to https://www.starlette.io/lifespan/ for recommended approach.",
             DeprecationWarning,
         )
 
-        def decorator(func: typing.Callable) -> typing.Callable:
+        def decorator(func: typing.Callable) -> typing.Callable:  # type: ignore[type-arg]  # noqa: E501
             self.add_event_handler(event_type, func)
             return func
 

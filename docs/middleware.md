@@ -106,6 +106,8 @@ The following arguments are supported:
 * `max_age` - Session expiry time in seconds. Defaults to 2 weeks. If set to `None` then the cookie will last as long as the browser session.
 * `same_site` - SameSite flag prevents the browser from sending session cookie along with cross-site requests. Defaults to `'lax'`.
 * `https_only` - Indicate that Secure flag should be set (can be used with HTTPS only). Defaults to `False`.
+* `domain` - Domain of the cookie used to share cookie between subdomains or cross-domains. The browser defaults the domain to the same host that set the cookie, excluding subdomains [refrence](https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#domain_attribute). 
+
 
 ## HTTPSRedirectMiddleware
 
@@ -773,14 +775,15 @@ A middleware class for reading/generating request IDs and attaching them to appl
 
 A middleware class for logging exceptions, errors, and log messages to [Rollbar](https://www.rollbar.com).
 
-#### [SentryMiddleware](https://github.com/encode/sentry-asgi)
-
-A middleware class for logging exceptions to [Sentry](https://sentry.io/).
-
 #### [StarletteOpentracing](https://github.com/acidjunk/starlette-opentracing)
 
 A middleware class that emits tracing info to [OpenTracing.io](https://opentracing.io/) compatible tracers and
 can be used to profile and monitor distributed applications.
+
+#### [SecureCookiesMiddleware](https://github.com/thearchitector/starlette-securecookies)
+
+Customizable middleware for adding automatic cookie encryption and decryption to Starlette applications, with
+extra support for existing cookie-based middleware.
 
 #### [TimingMiddleware](https://github.com/steinnes/timing-asgi)
 
