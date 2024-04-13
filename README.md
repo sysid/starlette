@@ -4,16 +4,12 @@
 <p align="center">
     <em>✨ The little ASGI framework that shines. ✨</em>
 </p>
-<p align="center">
-<a href="https://github.com/encode/starlette/actions">
-    <img src="https://github.com/encode/starlette/workflows/Test%20Suite/badge.svg" alt="Build Status">
-</a>
-<a href="https://pypi.org/project/starlette/">
-    <img src="https://badge.fury.io/py/starlette.svg" alt="Package version">
-</a>
-</p>
 
 ---
+
+[![Build Status](https://github.com/encode/starlette/workflows/Test%20Suite/badge.svg)](https://github.com/encode/starlette/actions)
+[![Package version](https://badge.fury.io/py/starlette.svg)](https://pypi.python.org/pypi/starlette)
+[![Supported Python Version](https://img.shields.io/pypi/pyversions/starlette.svg?color=%2334D058)](https://pypi.org/project/starlette)
 
 **Documentation**: [https://www.starlette.io/](https://www.starlette.io/)
 
@@ -137,7 +133,7 @@ in isolation.
 [httpx]: https://www.python-httpx.org/
 [jinja2]: https://jinja.palletsprojects.com/
 [python-multipart]: https://andrew-d.github.io/python-multipart/
-[itsdangerous]: https://pythonhosted.org/itsdangerous/
+[itsdangerous]: https://itsdangerous.palletsprojects.com/
 [sqlalchemy]: https://www.sqlalchemy.org
 [pyyaml]: https://pyyaml.org/wiki/PyYAMLDocumentation
 [techempower]: https://www.techempower.com/benchmarks/#hw=ph&test=fortune&l=zijzen-sf

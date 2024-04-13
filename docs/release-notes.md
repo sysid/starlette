@@ -1,3 +1,126 @@
+## 0.37.2
+
+March 5, 2024
+
+#### Added
+
+* Add `bytes` to `_RequestData` type [#2510](https://github.com/encode/starlette/pull/2510).
+
+#### Fixed
+
+* Revert "Turn `scope["client"]` to `None` on `TestClient` (#2377)" [#2525](https://github.com/encode/starlette/pull/2525).
+* Remove deprecated `app` argument passed to `httpx.Client` on the `TestClient` [#2526](https://github.com/encode/starlette/pull/2526).
+
+## 0.37.1
+
+February 9, 2024
+
+#### Fixed
+
+* Warn instead of raise for missing env file on `Config` [#2485](https://github.com/encode/starlette/pull/2485).
+
+## 0.37.0
+
+February 5, 2024
+
+#### Added
+
+* Support the WebSocket Denial Response ASGI extension [#2041](https://github.com/encode/starlette/pull/2041).
+
+## 0.36.3
+
+February 4, 2024
+
+#### Fixed
+
+* Create `anyio.Event` on async context [#2459](https://github.com/encode/starlette/pull/2459).
+
+## 0.36.2
+
+February 3, 2024
+
+#### Fixed
+
+* Upgrade `python-multipart` to `0.0.7` [13e5c26](13e5c26a27f4903924624736abd6131b2da80cc5).
+* Avoid duplicate charset on `Content-Type` [#2443](https://github.com/encode/starlette/2443).
+
+## 0.36.1
+
+January 23, 2024
+
+#### Fixed
+
+* Check if "extensions" in scope before checking the extension [#2438](http://github.com/encode/starlette/pull/2438).
+
+## 0.36.0
+
+January 22, 2024
+
+#### Added
+
+* Add support for ASGI `pathsend` extension [#2435](http://github.com/encode/starlette/pull/2435).
+* Cancel `WebSocketTestSession` on close [#2427](http://github.com/encode/starlette/pull/2427).
+* Raise `WebSocketDisconnect` when `WebSocket.send()` excepts `IOError` [#2425](http://github.com/encode/starlette/pull/2425).
+* Raise `FileNotFoundError` when the `env_file` parameter on `Config` is not valid [#2422](http://github.com/encode/starlette/pull/2422).
+
+## 0.35.1
+
+January 11, 2024
+
+#### Fixed
+
+* Stop using the deprecated "method" parameter in `FileResponse` inside of `StaticFiles` [#2406](https://github.com/encode/starlette/pull/2406).
+* Make `typing-extensions` optional again [#2409](https://github.com/encode/starlette/pull/2409).
+
+## 0.35.0
+
+January 11, 2024
+
+#### Added
+
+* Add `*args` to `Middleware` and improve its type hints [#2381](https://github.com/encode/starlette/pull/2381).
+
+#### Fixed
+
+* Use `Iterable` instead `Iterator` on `iterate_in_threadpool` [#2362](https://github.com/encode/starlette/pull/2362).
+
+#### Changes
+
+* Handle `root_path` to keep compatibility with mounted ASGI applications and WSGI [#2400](https://github.com/encode/starlette/pull/2400).
+* Turn `scope["client"]` to `None` on `TestClient` [#2377](https://github.com/encode/starlette/pull/2377).
+
+## 0.34.0
+
+December 16, 2023
+
+### Added
+
+* Use `ParamSpec` for `run_in_threadpool` [#2375](https://github.com/encode/starlette/pull/2375).
+* Add `UploadFile.__repr__` [#2360](https://github.com/encode/starlette/pull/2360).
+
+### Fixed
+
+* Merge URLs properly on `TestClient` [#2376](https://github.com/encode/starlette/pull/2376).
+* Take weak ETags in consideration on `StaticFiles` [#2334](https://github.com/encode/starlette/pull/2334).
+
+### Deprecated
+
+* Deprecate `FileResponse(method=...)` parameter [#2366](https://github.com/encode/starlette/pull/2366).
+
+## 0.33.0
+
+December 1, 2023
+
+### Added
+
+* Add `middleware` per `Route`/`WebSocketRoute` [#2349](https://github.com/encode/starlette/pull/2349).
+* Add `middleware` per `Router` [#2351](https://github.com/encode/starlette/pull/2351).
+
+### Fixed
+
+* Do not overwrite `"path"` and `"root_path"` scope keys [#2352](https://github.com/encode/starlette/pull/2352).
+* Set `ensure_ascii=False` on `json.dumps()` for `WebSocket.send_json()` [#2341](https://github.com/encode/starlette/pull/2341).
+
 ## 0.32.0.post1
 
 November 5, 2023
@@ -116,7 +239,7 @@ March 9, 2023
 March 9, 2023
 
 ### Added
-* Support [lifespan state](/lifespan/) [#2060](https://github.com/encode/starlette/pull/2060),
+* Support [lifespan state](lifespan.md) [#2060](https://github.com/encode/starlette/pull/2060),
   [#2065](https://github.com/encode/starlette/pull/2065) and [#2064](https://github.com/encode/starlette/pull/2064).
 
 ### Changed
