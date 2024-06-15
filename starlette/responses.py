@@ -41,10 +41,10 @@ class Response:
         self.body = self.render(content)
         self.init_headers(headers)
 
-    def render(self, content: typing.Any) -> bytes:
+    def render(self, content: typing.Any) -> bytes | memoryview:
         if content is None:
             return b""
-        if isinstance(content, bytes):
+        if isinstance(content, (bytes, memoryview)):
             return content
         return content.encode(self.charset)  # type: ignore
 
@@ -207,7 +207,7 @@ class RedirectResponse(Response):
         self.headers["location"] = quote(str(url), safe=":/%#?=@[]!$&'()*+,;")
 
 
-Content = typing.Union[str, bytes]
+Content = typing.Union[str, bytes, memoryview]
 SyncContentStream = typing.Iterable[Content]
 AsyncContentStream = typing.AsyncIterable[Content]
 ContentStream = typing.Union[AsyncContentStream, SyncContentStream]
@@ -248,7 +248,7 @@ class StreamingResponse(Response):
             }
         )
         async for chunk in self.body_iterator:
-            if not isinstance(chunk, bytes):
+            if not isinstance(chunk, (bytes, memoryview)):
                 chunk = chunk.encode(self.charset)
             await send({"type": "http.response.body", "body": chunk, "more_body": True})
 
