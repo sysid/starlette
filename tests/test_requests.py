@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Iterator
+from typing import Any, Iterator
 
 import anyio
 import pytest
 
-from starlette.datastructures import Address, State
+from starlette.datastructures import URL, Address, State
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
-from starlette.testclient import TestClient
 from starlette.types import Message, Receive, Scope, Send
-
-TestClientFactory = Callable[..., TestClient]
+from tests.types import TestClientFactory
 
 
 def test_request_url(test_client_factory: TestClientFactory) -> None:
@@ -93,7 +91,7 @@ def test_request_body(test_client_factory: TestClientFactory) -> None:
     assert response.json() == {"body": ""}
 
     response = client.post("/", json={"a": "123"})
-    assert response.json() == {"body": '{"a": "123"}'}
+    assert response.json() == {"body": '{"a":"123"}'}
 
     response = client.post("/", data="abc")  # type: ignore
     assert response.json() == {"body": "abc"}
@@ -114,7 +112,7 @@ def test_request_stream(test_client_factory: TestClientFactory) -> None:
     assert response.json() == {"body": ""}
 
     response = client.post("/", json={"a": "123"})
-    assert response.json() == {"body": '{"a": "123"}'}
+    assert response.json() == {"body": '{"a":"123"}'}
 
     response = client.post("/", data="abc")  # type: ignore
     assert response.json() == {"body": "abc"}
@@ -269,8 +267,8 @@ def test_request_disconnect(
 
 def test_request_is_disconnected(test_client_factory: TestClientFactory) -> None:
     """
-    If a client disconnect occurs while reading request body
-    then ClientDisconnect should be raised.
+    If a client disconnect occurs after reading request body
+    then request will be set disconnected properly.
     """
     disconnected_after_response = None
 
@@ -278,15 +276,15 @@ def test_request_is_disconnected(test_client_factory: TestClientFactory) -> None
         nonlocal disconnected_after_response
 
         request = Request(scope, receive)
-        await request.body()
+        body = await request.body()
         disconnected = await request.is_disconnected()
-        response = JSONResponse({"disconnected": disconnected})
+        response = JSONResponse({"body": body.decode(), "disconnected": disconnected})
         await response(scope, receive, send)
         disconnected_after_response = await request.is_disconnected()
 
     client = test_client_factory(app)
-    response = client.get("/")
-    assert response.json() == {"disconnected": False}
+    response = client.post("/", content="foo")
+    assert response.json() == {"body": "foo", "disconnected": False}
     assert disconnected_after_response
 
 
@@ -427,7 +425,7 @@ def test_cookies_edge_cases(
         # Browsers don't send extra whitespace or semicolons in Cookie headers,
         # but cookie_parser() should parse whitespace the same way
         # document.cookie parses whitespace.
-        # ("  =  b  ;  ;  =  ;   c  =  ;  ", {"": "b", "c": ""}),
+        ("  =  b  ;  ;  =  ;   c  =  ;  ", {"": "b", "c": ""}),
     ],
 )
 def test_cookies_invalid(
@@ -594,3 +592,44 @@ async def test_request_stream_called_twice() -> None:
         assert await s2.__anext__()
     with pytest.raises(StopAsyncIteration):
         await s1.__anext__()
+
+
+def test_request_url_outside_starlette_context(test_client_factory: TestClientFactory) -> None:
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        request = Request(scope, receive)
+        request.url_for("index")
+
+    client = test_client_factory(app)
+    with pytest.raises(
+        RuntimeError,
+        match="The `url_for` method can only be used inside a Starlette application or with a router.",
+    ):
+        client.get("/")
+
+
+def test_request_url_starlette_context(test_client_factory: TestClientFactory) -> None:
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.routing import Route
+    from starlette.types import ASGIApp
+
+    url_for = None
+
+    async def homepage(request: Request) -> Response:
+        return PlainTextResponse("Hello, world!")
+
+    class CustomMiddleware:
+        def __init__(self, app: ASGIApp) -> None:
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            nonlocal url_for
+            request = Request(scope, receive)
+            url_for = request.url_for("homepage")
+            await self.app(scope, receive, send)
+
+    app = Starlette(routes=[Route("/home", homepage)], middleware=[Middleware(CustomMiddleware)])
+
+    client = test_client_factory(app)
+    client.get("/home")
+    assert url_for == URL("http://testserver/home")

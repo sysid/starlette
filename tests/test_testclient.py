@@ -4,7 +4,7 @@ import itertools
 import sys
 from asyncio import Task, current_task as asyncio_current_task
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable
+from typing import Any, AsyncGenerator
 
 import anyio
 import anyio.lowlevel
@@ -20,8 +20,7 @@ from starlette.routing import Route
 from starlette.testclient import ASGIInstance, TestClient
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
-
-TestClientFactory = Callable[..., TestClient]
+from tests.types import TestClientFactory
 
 
 def mock_service_endpoint(request: Request) -> JSONResponse:
@@ -89,9 +88,7 @@ def test_testclient_headers_behavior() -> None:
     assert client.headers.get("Authentication") == "Bearer 123"
 
 
-def test_use_testclient_as_contextmanager(
-    test_client_factory: TestClientFactory, anyio_backend_name: str
-) -> None:
+def test_use_testclient_as_contextmanager(test_client_factory: TestClientFactory, anyio_backend_name: str) -> None:
     """
     This test asserts a number of properties that are important for an
     app level task_group
@@ -170,9 +167,7 @@ def test_use_testclient_as_contextmanager(
 
 
 def test_error_on_startup(test_client_factory: TestClientFactory) -> None:
-    with pytest.deprecated_call(
-        match="The on_startup and on_shutdown parameters are deprecated"
-    ):
+    with pytest.deprecated_call(match="The on_startup and on_shutdown parameters are deprecated"):
         startup_error_app = Starlette(on_startup=[startup])
 
     with pytest.raises(RuntimeError):
@@ -212,7 +207,7 @@ def test_testclient_asgi2(test_client_factory: TestClientFactory) -> None:
 
         return inner
 
-    client = test_client_factory(app)
+    client = test_client_factory(app)  # type: ignore
     response = client.get("/")
     assert response.text == "Hello, world!"
 
@@ -252,7 +247,7 @@ def test_websocket_blocking_receive(test_client_factory: TestClientFactory) -> N
 
         return asgi
 
-    client = test_client_factory(app)
+    client = test_client_factory(app)  # type: ignore
     with client.websocket_connect("/") as websocket:
         data = websocket.receive_json()
         assert data == {"message": "test"}
@@ -268,7 +263,7 @@ def test_websocket_not_block_on_close(test_client_factory: TestClientFactory) ->
 
         return asgi
 
-    client = test_client_factory(app)
+    client = test_client_factory(app)  # type: ignore
     with client.websocket_connect("/") as websocket:
         ...
     assert websocket.should_close.is_set()
@@ -307,8 +302,7 @@ def test_query_params(test_client_factory: TestClientFactory, param: str) -> Non
             marks=[
                 pytest.mark.xfail(
                     sys.version_info < (3, 11),
-                    reason="Fails due to domain handling in http.cookiejar module (see "
-                    "#2152)",
+                    reason="Fails due to domain handling in http.cookiejar module (see #2152)",
                 ),
             ],
         ),
@@ -317,9 +311,7 @@ def test_query_params(test_client_factory: TestClientFactory, param: str) -> Non
         ("example.com", False),
     ],
 )
-def test_domain_restricted_cookies(
-    test_client_factory: TestClientFactory, domain: str, ok: bool
-) -> None:
+def test_domain_restricted_cookies(test_client_factory: TestClientFactory, domain: str, ok: bool) -> None:
     """
     Test that test client discards domain restricted cookies which do not match the
     base_url of the testclient (`http://testserver` by default).
@@ -386,3 +378,27 @@ def test_merge_url(test_client_factory: TestClientFactory) -> None:
     client = test_client_factory(app, base_url="http://testserver/api/v1/")
     response = client.get("/bar")
     assert response.text == "/api/v1/bar"
+
+
+def test_raw_path_with_querystring(test_client_factory: TestClientFactory) -> None:
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        response = Response(scope.get("raw_path"))
+        await response(scope, receive, send)
+
+    client = test_client_factory(app)
+    response = client.get("/hello-world", params={"foo": "bar"})
+    assert response.content == b"/hello-world"
+
+
+def test_websocket_raw_path_without_params(test_client_factory: TestClientFactory) -> None:
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        websocket = WebSocket(scope, receive=receive, send=send)
+        await websocket.accept()
+        raw_path = scope.get("raw_path")
+        assert raw_path is not None
+        await websocket.send_bytes(raw_path)
+
+    client = test_client_factory(app)
+    with client.websocket_connect("/hello-world", params={"foo": "bar"}) as websocket:
+        data = websocket.receive_bytes()
+        assert data == b"/hello-world"
